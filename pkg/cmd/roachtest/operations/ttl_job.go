@@ -20,56 +20,45 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestflags"
-	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 )
 
-type cleanupAddedColumn struct {
-	db, table, column string
+type cleanupTTLJob struct {
+	db, table string
 }
 
-func (cl *cleanupAddedColumn) Cleanup(ctx context.Context, o operation.Operation, c cluster.Cluster) {
+func (cl *cleanupTTLJob) Cleanup(ctx context.Context, o operation.Operation, c cluster.Cluster) {
+	return
+}
+
+func runTTLJob(ctx context.Context, o operation.Operation, c cluster.Cluster) registry.OperationCleanup {
 	conn := c.Conn(ctx, o.L(), 1, option.VirtualClusterName(roachtestflags.VirtualCluster))
 	defer conn.Close()
 
-	o.Status(fmt.Sprintf("dropping column %s", cl.column))
-	_, err := conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s.%s DROP COLUMN %s CASCADE", cl.db, cl.table, cl.column))
-	if err != nil {
-		o.Fatal(err)
-	}
-}
-
-func runAddColumn(ctx context.Context, o operation.Operation, c cluster.Cluster) registry.OperationCleanup {
-	conn := c.Conn(ctx, o.L(), 1, option.VirtualClusterName(roachtestflags.VirtualCluster))
-	defer conn.Close()
-
-	rng, _ := randutil.NewPseudoRand()
 	dbName := pickRandomDB(ctx, o, conn)
 	tableName := pickRandomTable(ctx, o, conn, dbName)
 
-	colName := fmt.Sprintf("add_column_op_%d", rng.Uint32())
-	o.Status(fmt.Sprintf("adding column %s to table %s.%s", colName, dbName, tableName))
-	addColStmt := fmt.Sprintf("ALTER TABLE %s.%s ADD COLUMN %s VARCHAR DEFAULT 'default'", dbName, tableName, colName)
+	o.Status(fmt.Sprintf("enabling ttl on table %s.%s", dbName, tableName))
+	addColStmt := fmt.Sprintf("ALTER TABLE %s.%s WITH (ttl_expire_after = '2 minutes', ttl_job_cron = '*/3 * * * *');", dbName, tableName)
 	_, err := conn.ExecContext(ctx, addColStmt)
 	if err != nil {
 		o.Fatal(err)
 		return nil
 	}
 
-	o.Status(fmt.Sprintf("column %s created", colName))
+	o.Status(fmt.Sprintf("ttl created on %s.%s", dbName, tableName))
 	return &cleanupAddedColumn{
-		db:     dbName,
-		table:  tableName,
-		column: colName,
+		db:    dbName,
+		table: tableName,
 	}
 }
 
-func registerAddColumn(r registry.Registry) {
+func registerRunTTLJob(r registry.Registry) {
 	r.AddOperation(registry.OperationSpec{
-		Name:             "add-column",
+		Name:             "run-ttl-job",
 		Owner:            registry.OwnerSQLFoundations,
 		Timeout:          24 * time.Hour,
 		CompatibleClouds: registry.AllClouds,
 		Dependencies:     []registry.OperationDependency{registry.OperationRequiresPopulatedDatabase},
-		Run:              runAddColumn,
+		Run:              runTTLJob,
 	})
 }

@@ -28,7 +28,7 @@ type cleanupAddedIndex struct {
 }
 
 func (cl *cleanupAddedIndex) Cleanup(ctx context.Context, o operation.Operation, c cluster.Cluster) {
-	conn := c.Conn(ctx, o.L(), 1, option.TenantName(roachtestflags.VirtualCluster))
+	conn := c.Conn(ctx, o.L(), 1, option.VirtualClusterName(roachtestflags.VirtualCluster))
 	defer conn.Close()
 
 	o.Status(fmt.Sprintf("dropping index %s", cl.index))
@@ -39,7 +39,7 @@ func (cl *cleanupAddedIndex) Cleanup(ctx context.Context, o operation.Operation,
 }
 
 func runAddIndex(ctx context.Context, o operation.Operation, c cluster.Cluster) registry.OperationCleanup {
-	conn := c.Conn(ctx, o.L(), 1, option.TenantName(roachtestflags.VirtualCluster))
+	conn := c.Conn(ctx, o.L(), 1, option.VirtualClusterName(roachtestflags.VirtualCluster))
 	defer conn.Close()
 
 	rng, _ := randutil.NewPseudoRand()
