@@ -79,6 +79,7 @@ var OidToType = map[oid.Oid]*T{
 	// existing tables.
 	// oid.T_json:      Json,
 	oid.T_jsonb:        Jsonb,
+	oid.T_macaddr:      MACAddr,
 	oid.T_name:         Name,
 	oid.T_numeric:      Decimal,
 	oid.T_oid:          Oid,
@@ -128,6 +129,7 @@ var oidToArrayOid = map[oid.Oid]oid.Oid{
 	oid.T_int8:         oid.T__int8,
 	oid.T_interval:     oid.T__interval,
 	oid.T_jsonb:        oid.T__jsonb,
+	oid.T_macaddr:      oid.T__macaddr,
 	oid.T_name:         oid.T__name,
 	oid.T_numeric:      oid.T__numeric,
 	oid.T_oid:          oid.T__oid,
@@ -179,6 +181,7 @@ var familyToOid = map[Family]oid.Oid{
 	UuidFamily:           oid.T_uuid,
 	ArrayFamily:          oid.T_anyarray,
 	INetFamily:           oid.T_inet,
+	MACAddrFamily:        oid.T_macaddr,
 	TimeFamily:           oid.T_time,
 	TimeTZFamily:         oid.T_timetz,
 	JsonFamily:           oid.T_jsonb,
