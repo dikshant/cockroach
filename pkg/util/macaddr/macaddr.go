@@ -11,6 +11,7 @@
 package macaddr
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -20,13 +21,13 @@ import (
 
 // MacAddr is the representation of the Mac address. The uint64 takes 8-bytes for
 // both 6 and 8 byte Macaddr.
-type Addr uint64
+type MACAddr uint64
 
 // ParseINet parses postgres style MACAddr types. While Go's net.ParseMAC
 // supports MAC adddresses upto 20 octets in length, postgres does not. This
 // function returns an error if the MAC address is longer than 64 bits. See
 // TestParseMAC for examples.
-func ParseMAC(s string, dest *Addr) error {
+func ParseMAC(s string, dest *MACAddr) error {
 	hwAddr, err := net.ParseMAC(s)
 	if err != nil {
 		return pgerror.WithCandidateCode(
@@ -46,22 +47,22 @@ func ParseMAC(s string, dest *Addr) error {
 			pgcode.NumericValueOutOfRange)
 	}
 
-	*dest = Addr(macInt)
+	*dest = MACAddr(macInt)
 	return nil
 }
 
 // hibits returns the higher 32 bits of the MAC address.
-func hibits(a Addr) uint32 {
+func hibits(a MACAddr) uint32 {
 	return uint32(uint64(a) >> 32)
 }
 
 // lobits returns the lower 32 bits of the MAC address.
-func lobits(a Addr) uint32 {
+func lobits(a MACAddr) uint32 {
 	return uint32(uint64(a) & 0xFFFFFFFF)
 }
 
 // CompareMACs compares two MAC addresses using their high and low bits.
-func Compare(a1, a2 Addr) int {
+func Compare(a1, a2 MACAddr) int {
 	if hibits(a1) < hibits(a2) {
 		return -1
 	} else if hibits(a1) > hibits(a2) {
@@ -76,16 +77,27 @@ func Compare(a1, a2 Addr) int {
 }
 
 // MacAddrNot performs bitwise NOT on the MAC address.
-func MacAddrNot(addr Addr) Addr {
-	return Addr(^uint64(addr))
+func MacAddrNot(addr MACAddr) MACAddr {
+	return MACAddr(^uint64(addr))
 }
 
 // MacAddrAnd performs bitwise AND between two MAC addresses.
-func MacAddrAnd(addr1, addr2 Addr) Addr {
-	return Addr(uint64(addr1) & uint64(addr2))
+func MacAddrAnd(addr1, addr2 MACAddr) MACAddr {
+	return MACAddr(uint64(addr1) & uint64(addr2))
 }
 
 // MacAddrOr performs bitwise OR between two MAC addresses.
-func MacAddrOr(addr1, addr2 Addr) Addr {
-	return Addr(uint64(addr1) | uint64(addr2))
+func MacAddrOr(addr1, addr2 MACAddr) MACAddr {
+	return MACAddr(uint64(addr1) | uint64(addr2))
+}
+
+// String implements the stringer interface for MACAddr.
+func (m MACAddr) String() string {
+	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+		byte(m>>40),
+		byte(m>>32),
+		byte(m>>24),
+		byte(m>>16),
+		byte(m>>8),
+		byte(m))
 }
