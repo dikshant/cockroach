@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/duration"
 	"github.com/cockroachdb/cockroach/pkg/util/encoding/encodingtype"
 	"github.com/cockroachdb/cockroach/pkg/util/ipaddr"
+	"github.com/cockroachdb/cockroach/pkg/util/macaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeofday"
 	"github.com/cockroachdb/cockroach/pkg/util/timetz"
@@ -1780,6 +1781,8 @@ const (
 	// Special case
 	JsonEmptyArray     Type = 42
 	JsonEmptyArrayDesc Type = 43
+
+	MACAddr Type = 44
 )
 
 // typMap maps an encoded type byte to a decoded Type. It's got 256 slots, one
@@ -2796,6 +2799,19 @@ func EncodeUntaggedIPAddrValue(appendTo []byte, u ipaddr.IPAddr) []byte {
 	return u.ToBuffer(appendTo)
 }
 
+// EncodeMACAddrValue encodes a macaddr.MACAddr value with its value tag, appends
+// it to the supplied buffer, and returns the final buffer.
+func EncodeMACAddrValue(appendTo []byte, colID uint32, u macaddr.MACAddr) []byte {
+	appendTo = EncodeValueTag(appendTo, colID, MACAddr)
+	return EncodeUntaggedMACAddrValue(appendTo, u)
+}
+
+// EncodeUntaggedMACAddrValue encodes a macaddr.MACAddr value, appends it to the
+// supplied buffer, and returns the final buffer.
+func EncodeUntaggedMACAddrValue(appendTo []byte, u macaddr.MACAddr) []byte {
+	return EncodeUint64Ascending(appendTo, uint64(u))
+}
+
 // EncodeJSONValue encodes an already-byte-encoded JSON value with no value tag
 // but with a length prefix, appends it to the supplied buffer, and returns the
 // final buffer.
@@ -3154,6 +3170,21 @@ func DecodeUntaggedIPAddrValue(b []byte) (remaining []byte, u ipaddr.IPAddr, err
 	return remaining, u, err
 }
 
+// DecodeMACAddrValue decodes a value encoded by DecodeMACAddrValue.
+func DecodeMACAddrValue(b []byte) (remaining []byte, u macaddr.MACAddr, err error) {
+	b, err = decodeValueTypeAssert(b, MACAddr)
+	if err != nil {
+		return b, u, err
+	}
+	return DecodeUntaggedMACAddrValue(b)
+}
+
+// DecodeUntaggedMACAddrValue decodes a value encoded by EncodeUntaggedMACAddrValue.
+func DecodeUntaggedMACAddrValue(b []byte) (remaining []byte, u macaddr.MACAddr, err error) {
+	remaining, _, err = DecodeUint64Ascending(b)
+	return remaining, u, err
+}
+
 func decodeValueTypeAssert(b []byte, expected Type) ([]byte, error) {
 	_, dataOffset, _, typ, err := DecodeValueTag(b)
 	if err != nil {
@@ -3257,6 +3288,9 @@ func PeekValueLengthWithOffsetsAndType(b []byte, dataOffset int, typ Type) (leng
 			return dataOffset + ipaddr.IPv6size, err
 		}
 		return 0, errors.Errorf("got invalid INET IP family: %d", family)
+	case MACAddr:
+		_, n, err := DecodeUint64Ascending(b)
+		return dataOffset + int(n), err
 	default:
 		return 0, errors.Errorf("unknown type %s", typ)
 	}
@@ -3367,6 +3401,13 @@ func PrettyPrintValueEncoded(b []byte) ([]byte, string, error) {
 			return b, "", err
 		}
 		return b, ipAddr.String(), nil
+	case MACAddr:
+		var macAddr macaddr.MACAddr
+		b, macAddr, err = DecodeMACAddrValue(b)
+		if err != nil {
+			return b, "", err
+		}
+		return b, macAddr.String(), nil
 	default:
 		return b, "", errors.Errorf("unknown type %s", typ)
 	}
