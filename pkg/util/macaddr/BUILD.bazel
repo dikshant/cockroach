@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "macaddr",
+    srcs = ["macaddr.go"],
+    importpath = "github.com/cockroachdb/cockroach/pkg/util/macaddr",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/sql/pgwire/pgcode",
+        "//pkg/sql/pgwire/pgerror",
+        "@com_github_cockroachdb_errors//:errors",
+    ],
+)
