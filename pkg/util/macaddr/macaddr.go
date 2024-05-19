@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// MacAddr is the representation of the Mac address. The uint64 takes 8-bytes for
+// MACAddr is the representation of a MAC address. The uint64 takes 8-bytes for
 // both 6 and 8 byte Macaddr.
 type MACAddr uint64
 
@@ -62,14 +62,14 @@ func lobits(a MACAddr) uint32 {
 }
 
 // CompareMACs compares two MAC addresses using their high and low bits.
-func Compare(a1, a2 MACAddr) int {
-	if hibits(a1) < hibits(a2) {
+func (m MACAddr) Compare(addr MACAddr) int {
+	if hibits(m) < hibits(addr) {
 		return -1
-	} else if hibits(a1) > hibits(a2) {
+	} else if hibits(m) > hibits(addr) {
 		return 1
-	} else if lobits(a1) < lobits(a2) {
+	} else if lobits(m) < lobits(addr) {
 		return -1
-	} else if lobits(a1) > lobits(a2) {
+	} else if lobits(m) > lobits(addr) {
 		return 1
 	} else {
 		return 0
