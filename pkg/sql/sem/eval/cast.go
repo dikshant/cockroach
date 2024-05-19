@@ -576,6 +576,16 @@ func performCastWithoutPrecisionTruncation(
 			return d, nil
 		}
 
+	case types.MACAddrFamily:
+		switch t := d.(type) {
+		case *tree.DString:
+			return tree.ParseDMACAddrFromMACAddrString(string(*t))
+		case *tree.DCollatedString:
+			return tree.ParseDMACAddrFromMACAddrString(t.Contents)
+		case *tree.DIPAddr:
+			return d, nil
+		}
+
 	case types.Box2DFamily:
 		switch d := d.(type) {
 		case *tree.DString:

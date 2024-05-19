@@ -39,6 +39,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/ipaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/json"
+	"github.com/cockroachdb/cockroach/pkg/util/macaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/stringencoding"
 	"github.com/cockroachdb/cockroach/pkg/util/timeofday"
 	"github.com/cockroachdb/cockroach/pkg/util/timetz"
@@ -2095,6 +2096,152 @@ func (d *DIPAddr) Format(ctx *FmtCtx) {
 // Size implements the Datum interface.
 func (d *DIPAddr) Size() uintptr {
 	return unsafe.Sizeof(*d)
+}
+
+// DMACAddr is the Datum representation of the MACAddr type.
+type DMACAddr struct {
+	macaddr.MACAddr
+}
+
+// dMinMACAddr represents the minimum MAC address.
+var dMinMACAddr = NewDMACAddr(0x000000000000)
+
+// dMaxMACAddr represents the maximum MAC address.
+var dMaxMACAddr = NewDMACAddr(0xFFFFFFFFFFFF)
+
+// NewDMACAddr returns a new DMACAddr Datum.
+func NewDMACAddr(addr macaddr.MACAddr) *DMACAddr {
+	return &DMACAddr{MACAddr: addr}
+}
+
+// AsDDMACAddr attempts to retrieve a DMACAddr from an Expr, returning a
+// DMACAddr and a flag signifying whether the assertion was successful. The
+// function should be used instead of direct type assertions wherever a
+// *DMACAddr wrapped by a *DOidWrapper is possible.
+func AsDMACAddr(e Expr) (*DMACAddr, bool) {
+	switch t := e.(type) {
+	case *DMACAddr:
+		return t, true
+	case *DOidWrapper:
+		return AsDMACAddr(t.Wrapped)
+	}
+	return nil, false
+}
+
+// MustBeDMACAddr attempts to retrieve a DMACAddr from an Expr, panicking if the
+// assertion fails.
+func MustBeDMACAddr(e Expr) *DMACAddr {
+	v, ok := AsDMACAddr(e)
+	if !ok {
+		panic(errors.AssertionFailedf("expected *AsDMACAddr, found %T", e))
+	}
+	return v
+}
+
+// ParseDMACAddr takes a string of MACAddr and returns a DMACAddr value.
+func ParseDMACAddr(s string) (Datum, error) {
+	var addr macaddr.MACAddr
+	err := macaddr.ParseMAC(s, &addr)
+	if err != nil {
+		return nil, pgerror.Wrapf(err, pgcode.Syntax, "could not parse MAC address")
+	}
+	return NewDMACAddr(addr), nil
+}
+
+// Format implements the NodeFormatter interface.
+func (d *DMACAddr) Format(ctx *FmtCtx) {
+	bareStrings := ctx.HasFlags(FmtFlags(lexbase.EncBareStrings))
+	if !bareStrings {
+		ctx.WriteByte('\'')
+	}
+	ctx.WriteString(d.String())
+	if !bareStrings {
+		ctx.WriteByte('\'')
+	}
+}
+
+// ResolvedType implements the TypedExpr interface.
+func (d *DMACAddr) ResolvedType() *types.T { return types.MACAddr }
+
+// AmbiguousFormat implements the Datum interface.
+func (d *DMACAddr) AmbiguousFormat() bool {
+	return true
+}
+
+// Compare implements the Datum interface.
+func (d *DMACAddr) Compare(ctx CompareContext, other Datum) int {
+	res, err := d.CompareError(ctx, other)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
+// CompareError implements the Datum interface.
+func (d *DMACAddr) CompareError(ctx CompareContext, other Datum) (int, error) {
+	if other == DNull {
+		// NULL is less than any non-NULL value.
+		return 1, nil
+	}
+	v, ok := ctx.UnwrapDatum(other).(*DMACAddr)
+	if !ok {
+		return 0, makeUnsupportedComparisonMessage(d, other)
+	}
+
+	res := d.MACAddr.Compare(v.MACAddr)
+	return res, nil
+}
+
+// Prev implements the Datum interface.
+func (d *DMACAddr) Prev(ctx CompareContext) (Datum, bool) {
+	if d.MACAddr == dMinMACAddr.MACAddr {
+		return nil, false
+	}
+	return &DMACAddr{MACAddr: d.MACAddr - 1}, true
+}
+
+// Next implements the Datum interface.
+func (d *DMACAddr) Next(ctx CompareContext) (Datum, bool) {
+	if d.MACAddr == dMaxMACAddr.MACAddr {
+		return nil, false
+	}
+	return &DMACAddr{MACAddr: d.MACAddr + 1}, true
+}
+
+// IsMax implements the Datum interface.
+func (d *DMACAddr) IsMax(ctx CompareContext) bool {
+	return d.MACAddr == dMaxMACAddr.MACAddr
+}
+
+// IsMin implements the Datum interface.
+func (d *DMACAddr) IsMin(ctx CompareContext) bool {
+	return d.MACAddr == dMinMACAddr.MACAddr
+}
+
+// Max implements the Datum interface.
+func (d *DMACAddr) Max(ctx CompareContext) (Datum, bool) {
+	return dMaxMACAddr, false
+}
+
+// Min implements the Datum interface.
+func (d *DMACAddr) Min(ctx CompareContext) (Datum, bool) {
+	return dMinMACAddr, false
+}
+
+// Size implements the Datum interface.
+func (d *DMACAddr) Size() uintptr {
+	return unsafe.Sizeof(*d)
+}
+
+// ParseDMACAddrFromMACAddrString parses and returns the *DMACAddr Datum value
+// represented by the provided input MAC address string, or an error.
+func ParseDMACAddrFromMACAddrString(s string) (*DMACAddr, error) {
+	var d DMACAddr
+	err := macaddr.ParseMAC(s, &d.MACAddr)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 // DDate is the date Datum represented as the number of days after
@@ -6071,6 +6218,8 @@ func NewDefaultDatum(collationEnv *CollationEnvironment, t *types.T) (d Datum, e
 		return NewDArray(t.ArrayContents()), nil
 	case types.INetFamily:
 		return DMinIPAddr, nil
+	case types.MACAddrFamily:
+		return dMinMACAddr, nil
 	case types.TimeFamily:
 		return dTimeMin, nil
 	case types.JsonFamily:
