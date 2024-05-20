@@ -18125,7 +18125,6 @@ col_name_keyword:
 | INTERVAL
 | ISERROR
 | LEAST
-| MACADDR
 | NULLIF
 | NUMERIC
 | OUT
