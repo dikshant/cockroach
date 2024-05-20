@@ -64,6 +64,7 @@ go_library(
         "//pkg/util/errorutil/unimplemented",
         "//pkg/util/humanizeutil",
         "//pkg/util/ipaddr",
+        "//pkg/util/macaddr",
         "//pkg/util/json",
         "//pkg/util/log",
         "//pkg/util/log/eventpb",

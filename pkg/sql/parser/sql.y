@@ -966,7 +966,7 @@ func (u *sqlSymUnion) showFingerprintOptions() *tree.ShowFingerprintOptions {
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM
 %token <str> LIST LOCAL LOCALITY LOCALTIME LOCALTIMESTAMP LOCKED LOGIN LOOKUP LOW LSHIFT
 
-%token <str> MATCH MATERIALIZED MERGE MINVALUE MAXVALUE METHOD MINUTE MODIFYCLUSTERSETTING MODIFYSQLCLUSTERSETTING MONTH MOVE
+%token <str> MACADDR MATCH MATERIALIZED MERGE MINVALUE MAXVALUE METHOD MINUTE MODIFYCLUSTERSETTING MODIFYSQLCLUSTERSETTING MONTH MOVE
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM
 %token <str> MULTIPOINT MULTIPOINTM MULTIPOINTZ MULTIPOINTZM
 %token <str> MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM
@@ -1593,6 +1593,7 @@ func (u *sqlSymUnion) showFingerprintOptions() *tree.ShowFingerprintOptions {
 %type <*types.T> character_base
 %type <*types.T> geo_shape_type
 %type <*types.T> const_geo
+%type <*types.T> const_macaddr
 %type <str> extract_arg
 %type <bool> opt_varying
 
@@ -14271,6 +14272,9 @@ const_geo:
     $$.val = types.MakeGeography($3.geoShapeType(), geopb.SRID(val))
   }
 
+const_macaddr:
+  MACADDR { $$.val = types.MACAddr }
+
 // We have a separate const_typename to allow defaulting fixed-length types such
 // as CHAR() and BIT() to an unspecified length. SQL9x requires that these
 // default to a length of one, but this makes no sense for constructs like CHAR
@@ -14697,9 +14701,9 @@ interval_second:
 // We have two expression types: a_expr is the unrestricted kind, and b_expr is
 // a subset that must be used in some places to avoid shift/reduce conflicts.
 // For example, we can't do BETWEEN as "BETWEEN a_expr AND a_expr" because that
-// use of AND conflicts with AND as a boolean operator. So, b_expr is used in
+// use of AND conflicts with AND as a boolean operator. So, b_expr is used inz
 // BETWEEN and we remove boolean keywords from b_expr.
-//
+//%)]
 // Note that '(' a_expr ')' is a b_expr, so an unrestricted expression can
 // always be used by surrounding it with parens.
 //
@@ -17770,6 +17774,7 @@ bare_label_keywords:
 | LOGIN
 | LOOKUP
 | LOW
+| MACADDR
 | MATCH
 | MATERIALIZED
 | MAXVALUE
@@ -18120,6 +18125,7 @@ col_name_keyword:
 | INTERVAL
 | ISERROR
 | LEAST
+| MACADDR
 | NULLIF
 | NUMERIC
 | OUT

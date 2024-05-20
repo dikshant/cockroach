@@ -78,6 +78,8 @@ func Encode(appendTo []byte, colID ColumnIDDelta, val tree.Datum, scratch []byte
 		return encoding.EncodeUUIDValue(appendTo, uint32(colID), t.UUID), nil
 	case *tree.DIPAddr:
 		return encoding.EncodeIPAddrValue(appendTo, uint32(colID), t.IPAddr), nil
+	case *tree.DMACAddr:
+		return encoding.EncodeMACAddrValue(appendTo, uint32(colID), t.MACAddr), nil
 	case *tree.DJSON:
 		encoded, err := json.EncodeJSON(scratch, t.JSON)
 		if err != nil {

@@ -3185,6 +3185,21 @@ func DecodeUntaggedMACAddrValue(b []byte) (remaining []byte, u macaddr.MACAddr, 
 	return remaining, u, err
 }
 
+// EncodeMACAddrLegacy encodes the zzc as a byte array suitable for storing in KV.
+func EncodeMACAddrLegacy(appendTo []byte, t macaddr.MACAddr) []byte {
+	return EncodeUint64Ascending(appendTo, uint64(t))
+}
+
+// DecodeMACAddrLegacy decodes the byte array into a MACAddr.
+func DecodeMACAddrLegacy(b []byte) (macaddr.MACAddr, error) {
+	// Decode the uint64 value from the byte array.
+	_, addr, err := DecodeUint64Ascending(b)
+	if err != nil {
+		return 0, err
+	}
+	return macaddr.MACAddr(addr), nil
+}
+
 func decodeValueTypeAssert(b []byte, expected Type) ([]byte, error) {
 	_, dataOffset, _, typ, err := DecodeValueTag(b)
 	if err != nil {

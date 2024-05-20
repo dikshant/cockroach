@@ -11,7 +11,9 @@
 package macaddr
 
 import (
+	crand "crypto/rand"
 	"fmt"
+	"math/rand"
 	"net"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -100,4 +102,26 @@ func (m MACAddr) String() string {
 		byte(m>>16),
 		byte(m>>8),
 		byte(m))
+}
+
+// RandMACAddr generates a random MACAddr.
+func RandMACAddr(rng *rand.Rand) MACAddr {
+	buf := make([]byte, 6)
+	var mac net.HardwareAddr
+
+	_, err := crand.Read(buf)
+	if err != nil {
+		panic(err)
+	}
+
+	// Set the local bit
+	buf[0] |= 2
+
+	mac = append(mac, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
+	var macAddr MACAddr
+	for _, b := range mac {
+		macAddr = (macAddr << 8) | MACAddr(b)
+	}
+
+	return macAddr
 }

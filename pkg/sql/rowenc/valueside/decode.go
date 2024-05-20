@@ -188,6 +188,9 @@ func DecodeUntaggedDatum(
 	case types.INetFamily:
 		b, data, err := encoding.DecodeUntaggedIPAddrValue(buf)
 		return a.NewDIPAddr(tree.DIPAddr{IPAddr: data}), b, err
+	case types.MACAddrFamily:
+		b, data, err := encoding.DecodeUntaggedMACAddrValue(buf)
+		return a.NewDMACAddr(tree.DMACAddr{data}), b, err
 	case types.JsonFamily:
 		b, data, err := encoding.DecodeUntaggedBytesValue(buf)
 		if err != nil {

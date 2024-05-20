@@ -87,6 +87,7 @@ import (
 // | OID               | OID            | T_oid         | 0         | 0     |
 // | UUID              | UUID           | T_uuid        | 0         | 0     |
 // | INET              | INET           | T_inet        | 0         | 0     |
+// | MACADDR           | MACADDR        | T_macaddr     | 0         | 0     |
 // | TIME              | TIME           | T_time        | 0         | 0     |
 // | TIMETZ            | TIMETZ         | T_timetz      | 0         | 0     |
 // | JSON              | JSONB          | T_json        | 0         | 0     |

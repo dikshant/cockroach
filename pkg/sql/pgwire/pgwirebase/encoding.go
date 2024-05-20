@@ -449,6 +449,12 @@ func DecodeDatum(
 				return nil, tree.MakeParseError(bs, typ, err)
 			}
 			return d, nil
+		case oid.T_macaddr:
+			d, err := tree.ParseDMACAddrFromMACAddrString(bs)
+			if err != nil {
+				return nil, tree.MakeParseError(bs, typ, err)
+			}
+			return d, nil
 		case oid.T_jsonb, oid.T_json:
 			if err := validateStringBytes(b); err != nil {
 				return nil, err

@@ -188,6 +188,9 @@ func writeTextDatumNotNull(
 	case *tree.DIPAddr:
 		b.writeLengthPrefixedString(v.IPAddr.String())
 
+	case *tree.DMACAddr:
+		b.writeLengthPrefixedString(v.MACAddr.String())
+
 	case *tree.DString:
 		writeTextString(b, string(*v), t)
 
