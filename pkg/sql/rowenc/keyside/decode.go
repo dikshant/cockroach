@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/ipaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/json"
+	"github.com/cockroachdb/cockroach/pkg/util/macaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/timetz"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil/pgdate"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
@@ -265,6 +266,21 @@ func Decode(
 		var ipAddr ipaddr.IPAddr
 		_, err := ipAddr.FromBuffer(r)
 		return a.NewDIPAddr(tree.DIPAddr{IPAddr: ipAddr}), rkey, err
+	case types.MACAddrFamily:
+		var r []byte
+		if dir == encoding.Ascending {
+			// No need to perform the deep copy since converting to MACAddr below
+			// will do that for us.
+			rkey, r, err = encoding.DecodeBytesAscending(key, nil)
+		} else {
+			rkey, r, err = encoding.DecodeBytesDescending(key, nil)
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		var addr macaddr.MACAddr
+		_, err := addr.FromBuffer(r)
+		return a.NewDMACAddr(tree.DMACAddr{MACAddr: addr}), rkey, err
 	case types.OidFamily:
 		// TODO: This possibly should use DecodeUint32 (with corresponding changes
 		// to encoding) to ensure that the value fits in a DOid without any loss of

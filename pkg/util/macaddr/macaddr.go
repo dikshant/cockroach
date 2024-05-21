@@ -26,6 +26,9 @@ import (
 // both 6 and 8 byte Macaddr.
 type MACAddr uint64
 
+// MACAddrSize is the size of a 6 byte MACAddr.
+const MACAddrSize = 6
+
 // ParseINet parses postgres style MACAddr types. While Go's net.ParseMAC
 // supports MAC adddresses upto 20 octets in length, postgres does not. This
 // function returns an error if the MAC address is longer than 64 bits. See
@@ -47,6 +50,43 @@ func ParseMAC(s string, dest *MACAddr) error {
 	default:
 		return pgerror.WithCandidateCode(
 			errors.Errorf("could not parse %q as macaddr. invalid MAC address length", len(hwAddr)),
+			pgcode.NumericValueOutOfRange)
+	}
+
+	*dest = MACAddr(macInt)
+	return nil
+}
+
+func ParseMACFast(s string, dest *MACAddr) error {
+	var macInt uint64
+	var byteCount int
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		var value byte
+
+		switch {
+		case '0' <= c && c <= '9':
+			value = c - '0'
+		case 'a' <= c && c <= 'f':
+			value = c - 'a' + 10
+		case 'A' <= c && c <= 'F':
+			value = c - 'A' + 10
+		case c == ':' || c == '-':
+			continue
+		default:
+			return pgerror.WithCandidateCode(
+				errors.Errorf("could not parse %q as macaddr. invalid MAC address", s),
+				pgcode.InvalidTextRepresentation)
+		}
+
+		macInt = (macInt << 4) | uint64(value)
+		byteCount++
+	}
+
+	if byteCount != 12 && byteCount != 16 {
+		return pgerror.WithCandidateCode(
+			errors.Errorf("could not parse %q as macaddr. invalid MAC address length", s),
 			pgcode.NumericValueOutOfRange)
 	}
 

@@ -3289,8 +3289,7 @@ func PeekValueLengthWithOffsetsAndType(b []byte, dataOffset int, typ Type) (leng
 		}
 		return 0, errors.Errorf("got invalid INET IP family: %d", family)
 	case MACAddr:
-		_, n, err := DecodeUint64Ascending(b)
-		return dataOffset + int(n), err
+		return dataOffset + macaddr.MACAddrSize, err
 	default:
 		return 0, errors.Errorf("unknown type %s", typ)
 	}
