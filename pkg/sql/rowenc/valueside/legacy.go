@@ -17,9 +17,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgrepl/lsn"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
-	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/ipaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/json"
+	"github.com/cockroachdb/cockroach/pkg/util/macaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil/pgdate"
 	"github.com/cockroachdb/cockroach/pkg/util/tsearch"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
@@ -145,10 +145,10 @@ func MarshalLegacy(colType *types.T, val tree.Datum) (roachpb.Value, error) {
 			r.SetBytes(data)
 			return r, nil
 		}
-
 	case types.MACAddrFamily:
 		if v, ok := val.(*tree.DMACAddr); ok {
-			r.SetBytes(encoding.EncodeMACAddrLegacy(nil, v.MACAddr))
+			data := v.ToBuffer(nil)
+			r.SetBytes(data)
 			return r, nil
 		}
 	case types.JsonFamily:
@@ -383,7 +383,8 @@ func UnmarshalLegacy(a *tree.DatumAlloc, typ *types.T, value roachpb.Value) (tre
 		if err != nil {
 			return nil, err
 		}
-		addr, err := encoding.DecodeMACAddrLegacy(v)
+		var addr macaddr.MACAddr
+		_, err = addr.FromBuffer(v)
 		if err != nil {
 			return nil, err
 		}

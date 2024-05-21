@@ -2809,7 +2809,7 @@ func EncodeMACAddrValue(appendTo []byte, colID uint32, u macaddr.MACAddr) []byte
 // EncodeUntaggedMACAddrValue encodes a macaddr.MACAddr value, appends it to the
 // supplied buffer, and returns the final buffer.
 func EncodeUntaggedMACAddrValue(appendTo []byte, u macaddr.MACAddr) []byte {
-	return EncodeUint64Ascending(appendTo, uint64(u))
+	return u.ToBuffer(appendTo)
 }
 
 // EncodeJSONValue encodes an already-byte-encoded JSON value with no value tag
@@ -3181,23 +3181,8 @@ func DecodeMACAddrValue(b []byte) (remaining []byte, u macaddr.MACAddr, err erro
 
 // DecodeUntaggedMACAddrValue decodes a value encoded by EncodeUntaggedMACAddrValue.
 func DecodeUntaggedMACAddrValue(b []byte) (remaining []byte, u macaddr.MACAddr, err error) {
-	remaining, _, err = DecodeUint64Ascending(b)
+	remaining, err = u.FromBuffer(b)
 	return remaining, u, err
-}
-
-// EncodeMACAddrLegacy encodes the zzc as a byte array suitable for storing in KV.
-func EncodeMACAddrLegacy(appendTo []byte, t macaddr.MACAddr) []byte {
-	return EncodeUint64Ascending(appendTo, uint64(t))
-}
-
-// DecodeMACAddrLegacy decodes the byte array into a MACAddr.
-func DecodeMACAddrLegacy(b []byte) (macaddr.MACAddr, error) {
-	// Decode the uint64 value from the byte array.
-	_, addr, err := DecodeUint64Ascending(b)
-	if err != nil {
-		return 0, err
-	}
-	return macaddr.MACAddr(addr), nil
 }
 
 func decodeValueTypeAssert(b []byte, expected Type) ([]byte, error) {

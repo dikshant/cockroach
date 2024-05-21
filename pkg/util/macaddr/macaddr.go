@@ -12,6 +12,7 @@ package macaddr
 
 import (
 	crand "crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -124,4 +125,31 @@ func RandMACAddr(rng *rand.Rand) MACAddr {
 	}
 
 	return macAddr
+}
+
+// ToBuffer appends the MACAddr encoding to a buffer and returns the final buffer.
+func (m *MACAddr) ToBuffer(appendTo []byte) []byte {
+	// Convert the uint64 MAC address to a 6-byte array.
+	macBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(macBytes, uint64(*m))
+
+	// Append only the last 6 bytes of the 8-byte array to the buffer.
+	appendTo = append(appendTo, macBytes[2:]...)
+
+	return appendTo
+}
+
+// FromBuffer populates an MACAddr with data from a byte slice, returning the
+// remaining buffer or an error.
+func (m *MACAddr) FromBuffer(data []byte) ([]byte, error) {
+	if len(data) < 6 {
+		return nil, errors.AssertionFailedf("MACAddr decoding error: insufficient data, got %d bytes", len(data))
+	}
+	// Create a slice to hold the 6-byte MAC address.
+	macBytes := data[:6]
+
+	// Update macAddr to point to the new data.
+	*m = MACAddr(binary.BigEndian.Uint64(append([]byte{0, 0}, macBytes...)))
+
+	return data[6:], nil
 }
