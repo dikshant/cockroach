@@ -144,6 +144,12 @@ func Encode(b []byte, val tree.Datum, dir encoding.Direction) ([]byte, error) {
 			return encoding.EncodeBytesAscending(b, data), nil
 		}
 		return encoding.EncodeBytesDescending(b, data), nil
+	case *tree.DMACAddr:
+		data := t.ToBuffer(nil)
+		if dir == encoding.Ascending {
+			return encoding.EncodeBytesAscending(b, data), nil
+		}
+		return encoding.EncodeBytesDescending(b, data), nil
 	case *tree.DTuple:
 		for _, datum := range t.D {
 			var err error

@@ -26,6 +26,9 @@ import (
 // both 6 and 8 byte Macaddr.
 type MACAddr uint64
 
+// MACAddrSize is the size of a 6 byte MACAddr.
+const MACAddrSize = 6
+
 // ParseINet parses postgres style MACAddr types. While Go's net.ParseMAC
 // supports MAC adddresses upto 20 octets in length, postgres does not. This
 // function returns an error if the MAC address is longer than 64 bits. See
