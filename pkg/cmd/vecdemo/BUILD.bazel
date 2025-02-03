@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "vecdemo_lib",
+    srcs = [
+        "main.go"
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/cmd/vecbench",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_github_jackc_pgx_v4//:pgx"
+    ],
+)
+
+go_binary(
+    name = "vecdemo",
+    embed = [":vecdemo_lib"],
+    visibility = ["//visibility:public"],
+)
