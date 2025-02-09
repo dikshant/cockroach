@@ -5,6 +5,9 @@ go_library(
     srcs = [
         "main.go"
     ],
+    embedsrcs = [
+        "templates/index.html",
+    ],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/vecbench",
     visibility = ["//visibility:private"],
     deps = [
