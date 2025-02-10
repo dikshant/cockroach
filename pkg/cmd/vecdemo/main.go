@@ -12,9 +12,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -24,10 +27,10 @@ import (
 var templateFS embed.FS
 
 type ImageMetadata struct {
-	PhotoID     string    `json:"photo_id"`
-	PhotoURL    string    `json:"photo_url"`
-	Description string    `json:"description"`
-	Embedding   []float32 `json:"-"`
+	ID        string    `json:"id"`
+	Filename  string    `json:"filename"`
+	ImageURL  string    `json:"image_url"`
+	Embedding []float32 `json:"-"`
 }
 
 type SearchResponse struct {
@@ -94,12 +97,10 @@ func (s *TextEmbeddingService) GetEmbedding(ctx context.Context, text string) ([
 
 const setupSQL = `
 CREATE TABLE IF NOT EXISTS image_embeddings (
-    id UUID default gen_random_uuid() PRIMARY KEY,
-    photo_id TEXT NOT NULL,
-    photo_url TEXT NOT NULL,
-    description TEXT,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    filename TEXT NOT NULL,
     embedding vector(512) NOT NULL,
-	VECTOR INDEX (embedding)
+    VECTOR INDEX (embedding)
 );`
 
 func setupDatabase(ctx context.Context, conn *pgx.Conn) error {
@@ -108,7 +109,7 @@ func setupDatabase(ctx context.Context, conn *pgx.Conn) error {
 }
 
 func insertEmbeddings(ctx context.Context, conn *pgx.Conn, embeddings []ImageMetadata) error {
-	batchSize := 100 // Process in smaller batches
+	batchSize := 100
 	totalEmbeddings := len(embeddings)
 
 	for i := 0; i < totalEmbeddings; i += batchSize {
@@ -117,14 +118,12 @@ func insertEmbeddings(ctx context.Context, conn *pgx.Conn, embeddings []ImageMet
 			end = totalEmbeddings
 		}
 
-		// Build multi-value INSERT statement
 		var queryBuilder strings.Builder
 		queryBuilder.WriteString(`
-            INSERT INTO image_embeddings (photo_id, photo_url, description, embedding)
-            VALUES 
-        `)
+			INSERT INTO image_embeddings (filename, embedding)
+			VALUES 
+		`)
 
-		// Create parameter placeholders and collect values
 		var values []interface{}
 		paramOffset := 1
 
@@ -132,12 +131,12 @@ func insertEmbeddings(ctx context.Context, conn *pgx.Conn, embeddings []ImageMet
 			if j > 0 {
 				queryBuilder.WriteString(",")
 			}
-			queryBuilder.WriteString(fmt.Sprintf("($%d, $%d, $%d, $%d)",
-				paramOffset, paramOffset+1, paramOffset+2, paramOffset+3))
+			queryBuilder.WriteString(fmt.Sprintf("($%d, $%d)",
+				paramOffset, paramOffset+1))
 
 			vectorStr := fmt.Sprintf("[%s]", formatVector(img.Embedding))
-			values = append(values, img.PhotoID, img.PhotoURL, img.Description, vectorStr)
-			paramOffset += 4
+			values = append(values, img.Filename, vectorStr)
+			paramOffset += 2
 		}
 
 		log.Printf("Inserting batch %d-%d of %d embeddings...", i+1, end, totalEmbeddings)
@@ -185,12 +184,12 @@ func loadEmbeddingsFromCSV(filename string) ([]ImageMetadata, error) {
 			return nil, fmt.Errorf("error on line %d: %w", lineNum, err)
 		}
 
-		if len(record) < 4 {
-			return nil, fmt.Errorf("record on line %d: not enough fields", lineNum)
+		if len(record) != 3 {
+			return nil, fmt.Errorf("record on line %d: expected 3 fields, got %d", lineNum, len(record))
 		}
 
 		// Parse embedding string from CSV
-		embStr := strings.Trim(record[3], "[]")
+		embStr := strings.Trim(record[1], "[]")
 		embParts := strings.Split(embStr, ",")
 		embedding := make([]float32, len(embParts))
 
@@ -203,26 +202,45 @@ func loadEmbeddingsFromCSV(filename string) ([]ImageMetadata, error) {
 		}
 
 		embeddings = append(embeddings, ImageMetadata{
-			PhotoID:     record[0],
-			PhotoURL:    record[1],
-			Description: record[2],
-			Embedding:   embedding,
+			Filename:  record[0],
+			Embedding: embedding,
 		})
 	}
 
 	return embeddings, nil
 }
 
-func checkExistingEmbeddings(ctx context.Context, conn *pgx.Conn) (bool, error) {
-	var count int
-	err := conn.QueryRow(ctx, "SELECT COUNT(*) FROM image_embeddings").Scan(&count)
-	if err != nil {
-		return false, err
+// New function to load files concurrently
+func loadImageFiles(basePath string, filenames []string) (map[string][]byte, error) {
+	fileData := make(map[string][]byte)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, 10) // Limit concurrent file reads
+
+	for _, filename := range filenames {
+		wg.Add(1)
+		go func(fname string) {
+			defer wg.Done()
+			semaphore <- struct{}{}        // Acquire semaphore
+			defer func() { <-semaphore }() // Release semaphore
+
+			filepath := filepath.Join(basePath, fname)
+			data, err := os.ReadFile(filepath)
+			if err != nil {
+				log.Printf("Error reading file %s: %v", fname, err)
+				return
+			}
+
+			mu.Lock()
+			fileData[fname] = data
+			mu.Unlock()
+		}(filename)
 	}
-	return count > 0, nil
+
+	wg.Wait()
+	return fileData, nil
 }
 
-// Add this near the top of your main.go file, after the imports
 var templateFuncs = template.FuncMap{
 	"safeHTML": func(s string) template.HTML {
 		return template.HTML(s)
@@ -235,25 +253,56 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
-// Then update the setupHandlers function to use the template functions:
-func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numResults int) {
-	// Parse template with functions
-	tmpl := template.Must(template.New("index.html").Funcs(templateFuncs).ParseFS(templateFS, "templates/index.html"))
+// Add this new handler function
+func setupImageHandler(imagesPath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		filename := r.URL.Query().Get("filename")
+		if filename == "" {
+			http.Error(w, "filename is required", http.StatusBadRequest)
+			return
+		}
 
-	// Rest of the handler setup remains the same...
+		// Prevent directory traversal
+		cleanPath := filepath.Clean(filename)
+		if strings.Contains(cleanPath, "..") {
+			http.Error(w, "invalid filename", http.StatusBadRequest)
+			return
+		}
+
+		filePath := filepath.Join(imagesPath, cleanPath)
+
+		// Get the content type based on file extension
+		contentType := "image/jpeg"
+		// Set proper headers
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+
+		http.ServeFile(w, r, filePath)
+	}
+}
+
+type SearchRequest struct {
+	Query    string `json:"query"`
+	UseIndex bool   `json:"useIndex"`
+}
+
+func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numResults int, imagesPath string) {
+	tmpl := template.Must(template.New("index.html").Funcs(templateFuncs).ParseFS(templateFS, "templates/index.html"))
+	// Add the image handler
+	http.HandleFunc("/api/image", setupImageHandler(imagesPath))
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		tmpl.ExecuteTemplate(w, "index.html", nil)
 	})
-	// Update the search handler in setupHandlers
+
+	// In your search handler
 	http.HandleFunc("/api/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		var request struct {
-			Query string `json:"query"`
-		}
+		var request SearchRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -261,9 +310,14 @@ func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numRe
 
 		ctx := r.Context()
 
-		// Get total count of embeddings
 		var totalCount int
-		err := conn.QueryRow(ctx, "SELECT COUNT(*) FROM image_embeddings").Scan(&totalCount)
+		// Use the appropriate table based on useIndex flag
+		tableName := "image_embeddings"
+		if !request.UseIndex {
+			tableName = "image_embeddings_no_idx"
+		}
+
+		err := conn.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)).Scan(&totalCount)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -277,12 +331,11 @@ func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numRe
 
 		vectorStr := fmt.Sprintf("[%s]", formatVector(queryEmbedding))
 		sqlQuery := fmt.Sprintf(`
-        SELECT photo_id, photo_url, description 
-        FROM image_embeddings 
-        ORDER BY embedding <-> '%s' 
-        LIMIT %d`, vectorStr, numResults)
+			SELECT id, filename 
+			FROM %s 
+			ORDER BY embedding <-> '%s' 
+			LIMIT %d`, tableName, vectorStr, numResults)
 
-		// Create a display version of the query with truncated vector
 		displayQuery := strings.Replace(sqlQuery, vectorStr, "[...vector...]", 1)
 
 		startTime := time.Now()
@@ -296,20 +349,26 @@ func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numRe
 		var results []ImageMetadata
 		for rows.Next() {
 			var img ImageMetadata
-			if err := rows.Scan(&img.PhotoID, &img.PhotoURL, &img.Description); err != nil {
+			if err := rows.Scan(&img.ID, &img.Filename); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			results = append(results, img)
 		}
-		queryTime := time.Since(startTime)
+		ts := time.Since(startTime)
+
+		// Instead of loading files, just create URLs
+		for i := range results {
+			results[i].ImageURL = fmt.Sprintf("/api/image?filename=%s",
+				url.QueryEscape(results[i].Filename))
+		}
 
 		response := SearchResponse{
 			Results:     results,
 			Query:       request.Query,
 			SQL:         displayQuery,
 			TotalCount:  totalCount,
-			QueryTimeMs: queryTime.Milliseconds(),
+			QueryTimeMs: ts.Milliseconds(),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -317,9 +376,19 @@ func setupHandlers(conn *pgx.Conn, embeddingService *TextEmbeddingService, numRe
 	})
 }
 
+func checkExistingEmbeddings(ctx context.Context, conn *pgx.Conn) (bool, error) {
+	var count int
+	err := conn.QueryRow(ctx, "SELECT COUNT(*) FROM image_embeddings").Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func main() {
 	clipServer := flag.String("server", "http://localhost:8000", "CLIP embedding server URL")
 	csvPath := flag.String("csv", "clip_embeddings.csv", "Path to embeddings CSV")
+	imagesPath := flag.String("images", "./images", "Path to images directory")
 	numResults := flag.Int("n", 6, "Number of results to return")
 	dbURL := flag.String("db", "postgres://root@127.0.0.1:29000/defaultdb?sslmode=disable", "CockroachDB connection string")
 	port := flag.String("port", "8080", "Web server port")
@@ -327,19 +396,16 @@ func main() {
 
 	ctx := context.Background()
 
-	// Connect to CockroachDB
 	conn, err := pgx.Connect(ctx, *dbURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer conn.Close(ctx)
 
-	// Setup database
 	if err := setupDatabase(ctx, conn); err != nil {
 		log.Fatalf("Failed to setup database: %v", err)
 	}
 
-	// Check if we need to load embeddings
 	hasEmbeddings, err := checkExistingEmbeddings(ctx, conn)
 	if err != nil {
 		log.Fatalf("Failed to check existing embeddings: %v", err)
@@ -362,7 +428,7 @@ func main() {
 		log.Printf("Using existing embeddings from database")
 	}
 
-	setupHandlers(conn, embeddingService, *numResults)
+	setupHandlers(conn, embeddingService, *numResults, *imagesPath)
 
 	log.Printf("Server starting on http://localhost:%s", *port)
 	if err := http.ListenAndServe(":"+*port, nil); err != nil {

@@ -11,7 +11,8 @@
     <div id="app" class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-8">Vector Image Search</h1>
         
-        <div class="mb-8">
+        <!-- Search Input and Index Toggle -->
+        <div class="mb-8 space-y-4">
             <input 
                 type="text" 
                 v-model="query" 
@@ -19,17 +20,53 @@
                 placeholder="Describe the image you're looking for..."
                 class="w-full p-4 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
+            <div class="flex items-center space-x-2">
+                <button 
+                    @click="toggleIndex" 
+                    :class="[
+                        'px-4 py-2 rounded-lg font-medium transition-colors',
+                        useIndex 
+                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
+                            : 'bg-red-100 text-red-700 hover:bg-red-200'
+                    ]"
+                >
+                    <span class="flex items-center">
+                        <svg 
+                            v-if="useIndex"
+                            xmlns="http://www.w3.org/2000/svg" 
+                            class="h-5 w-5 mr-2" 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <svg
+                            v-else
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5 mr-2"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                        >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        ${ useIndex ? 'Using Index' : 'No Index (Slower)' }
+                    </span>
+                </button>
+            </div>
         </div>
 
+        <!-- Search Stats -->
         <div v-if="lastSearchInfo" class="mb-8">
             <div class="rounded-lg border-2 border-emerald-500 bg-white p-4 shadow-lg">
                 <div class="flex items-center justify-between">
                     <div class="space-y-1">
                         <div class="text-emerald-700 font-medium">Search Performance</div>
                         <div class="flex items-baseline space-x-1">
-                            <span class="text-2xl font-bold text-emerald-600">{{ "{{ lastSearchInfo.total_count.toLocaleString() }}" }}</span>
+                            <span class="text-2xl font-bold text-emerald-600">${ lastSearchInfo.total_count.toLocaleString() }</span>
                             <span class="text-gray-600">embeddings searched in</span>
-                            <span class="text-2xl font-bold text-emerald-600">{{ "{{ formatTime(lastSearchInfo.query_time_ms) }}" }}</span>
+                            <span class="text-2xl font-bold text-emerald-600">${ formatTime(lastSearchInfo.query_time_ms) }</span>
                         </div>
                     </div>
                     <div class="text-emerald-500">
@@ -41,87 +78,107 @@
             </div>
         </div>
 
-    
-        <!-- SQL Preview -->
-        <div class="mb-8 p-4 bg-gray-800 text-white rounded-lg overflow-x-auto">
-            <pre class="font-mono text-sm opacity-50" v-else>{{ `SELECT photo_id, photo_url, description 
-FROM image_embeddings 
-ORDER BY embedding <-> '[...vector...]' 
-LIMIT 6` }}</pre>
-        </div>
-
         <!-- Loading State -->
         <div v-if="loading" class="text-center py-8">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="text-gray-600">Loading results...</p>
         </div>
 
         <!-- Results Grid -->
         <div v-if="results.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div v-for="result in results" :key="result.photo_id" class="bg-white rounded-lg shadow-lg overflow-hidden">
-                <img :src="result.photo_url"  class="w-full h-48 object-cover">
+            <div v-for="result in results" :key="result.id" class="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div class="relative pb-[100%]">
+                    <img 
+                        :src="result.image_url"
+                        :alt="result.filename"
+                        class="absolute inset-0 w-full h-full object-contain"
+                        @error="handleImageError($event, result)"
+                    >
+                </div>
+                <div class="p-4">
+                    <p class="text-sm text-gray-600 truncate">${ result.filename }</p>
+                </div>
             </div>
         </div>
 
         <!-- No Results State -->
-        <div v-if="!loading && query && !results.length" class="text-center py-8 text-gray-600">
-            No results found for your query.
+        <div v-if="!loading && query && !results.length" class="text-center py-8">
+            <p class="text-gray-600">No results found</p>
         </div>
     </div>
-    <script>{{ safeJS `
-        const { createApp } = Vue
-    
-        createApp({
-            data() {
-                return {
-                    query: '',
-                    results: [],
-                    sqlQuery: '',
-                    loading: false,
-                    lastSearchInfo: null
+
+    <script>
+    const { createApp } = Vue
+
+    createApp({
+        delimiters: ['${', '}'],
+        data() {
+            return {
+                query: '',
+                results: [],
+                sqlQuery: '',
+                loading: false,
+                lastSearchInfo: null,
+                useIndex: true  // New state for index toggle
+            }
+        },
+        methods: {
+            formatTime(ms) {
+                if (ms < 1) return `${ms.toFixed(2)}ms`;
+                if (ms < 1000) return `${ms.toFixed(1)}ms`;
+                return `${(ms/1000).toFixed(2)}s`;
+            },
+
+            toggleIndex() {
+                this.useIndex = !this.useIndex;
+                if (this.query.trim()) {
+                    this.search(); // Re-run search with new setting
                 }
             },
-            methods: {
-                formatTime(ms) {
-                    if (ms >= 1000) {
-                        const seconds = (ms / 1000).toFixed(2)
-                        return seconds + ' seconds'
-                    }
-                    return ms + ' ms'
-                },
-                async search() {
-                    if (!this.query.trim()) return
-    
-                    this.loading = true
-                    this.results = []
-                    this.lastSearchInfo = null
-                    
-                    try {
-                        const response = await fetch('/api/search', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ query: this.query })
+
+            handleImageError(e, result) {
+                console.error('Image loading error:', {
+                    filename: result.filename,
+                    url: result.image_url
+                });
+            },
+
+            async search() {
+                if (!this.query.trim()) return;
+                
+                this.loading = true;
+                this.results = [];
+                this.lastSearchInfo = null;
+                
+                try {
+                    const response = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            query: this.query,
+                            useIndex: this.useIndex  // Send index preference to backend
                         })
-    
-                        if (!response.ok) throw new Error('Search failed')
-    
-                        const data = await response.json()
-                        this.results = data.results
-                        this.sqlQuery = data.sql
-                        this.lastSearchInfo = {
-                            total_count: data.total_count,
-                            query_time_ms: data.query_time_ms
-                        }
-                    } catch (error) {
-                        console.error('Search error:', error)
-                        alert('Failed to perform search. Please try again.')
-                    } finally {
-                        this.loading = false
-                    }
+                    });
+
+                    if (!response.ok) throw new Error('Search failed: ' + response.status);
+
+                    const data = await response.json();
+                    this.results = data.results;
+                    this.sqlQuery = data.sql;
+                    this.lastSearchInfo = {
+                        total_count: data.total_count,
+                        query_time_ms: data.query_time_ms
+                    };
+                } catch (error) {
+                    console.error('Search error:', error);
+                    alert('Failed to perform search. Please try again.');
+                } finally {
+                    this.loading = false;
                 }
             }
-        }).mount('#app')
-    ` }}</script>
+        }
+    }).mount('#app')
+    </script>
 </body>
 </html>
