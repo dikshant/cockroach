@@ -6,8 +6,11 @@
 package macaddr
 
 import (
+<<<<<<< HEAD
 	"fmt"
 
+=======
+>>>>>>> c76fc062db2 (util: add macaddr parsing utility)
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 )
